@@ -2,6 +2,7 @@ library(tidyverse)
 library(leaflet)
 library(leaflet.extras)
 library(mapview)
+library(sp)
 library(sf)
 library(htmltools)
 
@@ -49,6 +50,9 @@ prep_pins_bbox <- function(cleaned_pins){
 }
 
 prep_tiles <- function(tiles_df){
+  attribution_regex <- "Airbus|DigitalGlobe|ImageSat"
+  copy <-  "\uA9"
+  
   tiles_df %>%
     mutate(date = str_extract(wms, "\\d+-\\d+-\\d+|\\d{2}-\\d{4}"),
            date = case_when(str_detect(date, "-\\d{2}_") ~ str_replace(date, "-(\\d{2})$", "-20\\1"),
@@ -57,20 +61,29 @@ prep_tiles <- function(tiles_df){
                                                                               "\\1-01-\\2"),
                             TRUE ~ date),
            date = as.Date(date, format = "%m-%d-%Y")) %>%
-    mutate(source = str_extract(wms, "Airbus|DigitalGlobe|ImageSat")) %>%
-    mutate(source = case_when(str_detect(source, "Airbus") ~ "Airbus",
-                              str_detect(source, "DigitalGlobe") ~ "Digital Globe",
-                              str_detect(source, "ImageSat") ~ "ImageSat")) %>%
+    mutate(source = str_extract(wms, attribution_regex)) %>%
+    mutate(source = str_extract(source, "[A-z]+")) %>%
+    mutate(source = ifelse(str_detect(source, "DigitalGlobe"),
+                           "Digital Globe", source)) %>%
+    mutate(source = paste(copy, source, lubridate::year(date))) %>%
+    # mutate(source = case_when(str_detect(source, "Airbus") ~ "Airbus",
+                              # str_detect(source, "DigitalGlobe") ~ "Digital Globe",
+                              # str_detect(source, "ImageSat") ~ "ImageSat")) %>%
     arrange(desc(date)) %>%
     mutate(date = as.character(date, format = "%Y-%m-%d")) %>%
     pmap(list)
 }
 
-prep_map <- function(){
-  leaflet() %>%
-    addProviderTiles(providers$OpenStreetMap.DE,
-                     options = providerTileOptions(minZoom = 2, maxZoom = 13),
-                     group = "base_tiles")
+prep_map <- function(tile_extent, zoom){
+  long <- mean(c(tile_extent$long1, tile_extent$long2))
+  lat <- mean(c(tile_extent$lat1, tile_extent$lat2))
+  
+  leaflet(options = leafletOptions(minZoom = 3, maxZoom = 18)) %>%
+    setView(lng = long, lat = lat, zoom = zoom) %>%
+    addTiles()
+    # addProviderTiles(providers$OpenStreetMap,
+                     # options = providerTileOptions(minZoom = 2, maxZoom = 13),
+                     # group = "base_tiles")
 }
 
 add_tiles <- function(prepped_map, prepped_tiles){
@@ -94,8 +107,15 @@ add_tiles <- function(prepped_map, prepped_tiles){
                      position = "topright")
 }
 
-add_buttons <- function(tiled_map, prepped_pins,
-                         map_extent, pins_extent, tiles_df){
+add_buttons <- function(tiled_map, prepped_pins, pins_extent, tiles_df, tile_extent){
+  # sp::bbox(sp::SpatialPoints(tile_extent)
+  tile_bbox <- rbind(c(tile_extent$long1, tile_extent$lat1),
+                     c(tile_extent$long2, tile_extent$lat2)) %>%
+    as.matrix() %>%
+    sp::SpatialPoints() %>%
+    sp::bbox() %>%
+    raster::extent()
+  
   tiled_map %>%
     addMarkers(data = prepped_pins,
                popup = ~paste0("<b>Comments:</b> ", Comments, "<br>",
@@ -105,11 +125,20 @@ add_buttons <- function(tiled_map, prepped_pins,
                group = "Expert Pins") %>%
     addHomeButton(pins_extent,
                   position = "topleft",
-                  layer.name = "Expert Pins")
+                  layer.name = "Expert Pins") %>%
+    addHomeButton(ext = tile_bbox,
+                  position = "topleft",
+                  layer.name = "All Site Imagery")
 }
 
-finish_map <- function(leaf){
+finish_map <- function(leaf, tile_extent){
   leaf %>%
+    # addRectangles(lng1 = tile_extent$long1, lat1 = tile_extent$lat1,
+    #               lng2 = tile_extent$long2, lat2 = tile_extent$lat2,
+    #               fillColor = "transparent") %>%
+    addMiniMap(zoomLevelOffset = -8,
+               width = 175, height = 175,
+               aimingRectOptions = list(weight = 5)) %>%
     addScaleBar(position = "bottomright") %>%
     addMeasure(position = "bottomright",
                primaryLengthUnit = "meters",
@@ -124,17 +153,19 @@ finish_map <- function(leaf){
             width = 375 * 0.75, height = 82.5 * 0.75, position = "bottomleft")
 }
 
-make_map <- function(shapefile, tiles_df){
+make_map <- function(shapefile, tiles_df, tile_extent, initial_zoom){
   pins <- prep_pins(shapefile)
   pins_extent <- prep_pins_bbox(pins)
   prepped_tiles <- prep_tiles(tiles_df)
-  prep_map() %>%
+  prep_map(tile_extent = tile_extent, 
+           zoom = initial_zoom) %>%
     add_tiles(prepped_tiles) %>%
     add_buttons(tiled_map = ., 
-                 prepped_pins = pins, 
-                 pins_extent =  pins_extent,
-                 tiles_df = tiles_df) %>%
-    finish_map()
+                prepped_pins = pins, 
+                pins_extent =  pins_extent,
+                tiles_df = tiles_df,
+                tile_extent = tile_extent) %>%
+    finish_map(tile_extent = tile_extent)
 }
 
 
