@@ -8,7 +8,11 @@ library(htmltools)
 source("not_for_git/url_vars.R")
 
 # junk regex ====================================================================
-junk_regex <-"[Tt]est|can i drop this pin"
+junk_regex <- c("[Tt]est", "can i drop this pin\\?", "15SEP16", "test 15SEP16") %>%
+  str_replace_all("^", "\\(\\^") %>%
+  str_replace_all("(.)$", "\\1$\\)") %>%
+  str_replace_all("\\s", "\\\\b\\\\s\\\\b") %>%
+  str_c(collapse = "|")
 
 # funs ==========================================================================
 prep_pins <- function(shapefile){
