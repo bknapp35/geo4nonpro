@@ -9,6 +9,7 @@ source("not_for_git/url_vars.R")
 
 # junk regex ====================================================================
 junk_regex <-"[Tt]est|can i drop this pin"
+
 # funs ==========================================================================
 prep_pins <- function(shapefile){
   shapefile %>%
