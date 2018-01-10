@@ -7,12 +7,20 @@ library(htmltools)
 
 source("not_for_git/url_vars.R")
 
-# junk regex ====================================================================
+# helper regex vars =============================================================
+#* junk regex ===================================================================
 junk_regex <- c("[Tt]est", "can i drop this pin\\?", "15SEP16", "test 15SEP16") %>%
   str_replace_all("^", "\\(\\^") %>%
   str_replace_all("(.)$", "\\1$\\)") %>%
   str_replace_all("\\s", "\\\\b\\\\s\\\\b") %>%
   str_c(collapse = "|")
+
+#* problematic unicode ==========================================================
+unicode_regex <- str_c("\u{00B0}", "\u{FFFD}",
+                       sep = "|")
+
+#* "mis-columned" comments ======================================================
+bad_comments <- c("Tunnel entrance with signs of recent activity")
 
 # funs ==========================================================================
 prep_pins <- function(shapefile){
@@ -21,14 +29,13 @@ prep_pins <- function(shapefile){
     filter(!str_detect(str_trim(Comments), junk_regex)) %>%
     st_transform(crs = 4326) %>%
     mutate(Date = as.Date(Date)) %>%
-    mutate(Comments = str_replace_all(Comments, "\u{00B0}|\u{FFFD}", "")) %>%
-    mutate(Comments = ifelse(is.na(Comments) &
-                               Source == "Tunnel entrance with signs of recent activity",
-                             "Tunnel entrance with signs of recent activity",
+    mutate(Comments = str_replace_all(Comments, unicode_regex, "")) %>%
+    mutate(Comments = ifelse(is.na(Comments) & Source %in% bad_comments,
+                             Source,
                              Comments)) %>%
     mutate(Comments = {Comments %>% str_replace_all("\\?{2,}", "") %>%
-        str_replace_all("\\(\\)", "")}) %>%
-    mutate(Source = ifelse(Source == "Tunnel entrance with signs of recent activity",
+                                    str_replace_all("\\(\\)", "")}) %>%
+    mutate(Source = ifelse(Source %in% bad_comments,
                            NA, Source)) %>%
     rename(`Reported by` = ReportedBy) %>% 
     drop_na(Comments) %>%
