@@ -2,19 +2,10 @@ library(tidyverse)
 library(leaflet)
 library(leaflet.extras)
 library(mapview)
-# library(rgdal)
 library(sf)
 library(htmltools)
 
-# map data =======================================================================
-base_wms <- "http://54.69.133.195:8080/geoserver/ows"
-
-# attribution ====================================================================
-digital_globe <- "&copy; <a href='https://www.digitalglobe.com/legal/information'>Digital Globe</a>"
-airbus <- "&copy; <a href='http://www.intelligence-airbusds.com/en/7306-copy-of-licences-and-supply-conditions/'>Airbus</a>"
-
-# CNS logo =======================================================================
-cns_logo <- "http://static.wixstatic.com/media/73b18b_5dfb9c2558344892985baa471c4ac538.png/v1/fill/w_750,h_165,al_c,usm_0.66_1.00_0.01/73b18b_5dfb9c2558344892985baa471c4ac538.png"
+source("not_for_git/url_vars.R")
 
 # junk regex ====================================================================
 junk_regex <-"[Tt]est|can i drop this pin"
@@ -38,13 +29,6 @@ prep_pins <- function(shapefile){
     drop_na(Comments) %>%
     st_as_sf()
 }
-
-# prep_map_bbox <- function(coord_list){
-#   st_sfc(st_point(c(coord_list$long1, coord_list$lat1)), 
-#          st_point(c(coord_list$long2, coord_list$lat2))) %>%
-#     as(., "Spatial") %>%
-#     raster::extent()
-# }
 
 prep_pins_bbox <- function(cleaned_pins){
   cleaned_pins %>%
@@ -127,8 +111,6 @@ finish_map <- function(leaf){
             alpha = 0.75,
             width = 375 * 0.75, height = 82.5 * 0.75, position = "bottomleft")
 }
-
-
 
 make_map <- function(shapefile, tiles_df){
   pins <- prep_pins(shapefile)
