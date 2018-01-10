@@ -27,6 +27,7 @@ bad_comments <- c("Tunnel entrance with signs of recent activity")
 prep_pins <- function(shapefile){
   shapefile %>%
     st_read(stringsAsFactors = FALSE) %>%
+    `colnames<-`(c("ID", "Date", "ReportedBy", "Source", "Comments", "geometry")) %>%
     filter(!str_detect(str_trim(Comments), junk_regex)) %>%
     st_transform(crs = 4326) %>%
     mutate(Date = as.Date(Date)) %>%
@@ -66,24 +67,17 @@ prep_tiles <- function(tiles_df){
     mutate(source = ifelse(str_detect(source, "DigitalGlobe"),
                            "Digital Globe", source)) %>%
     mutate(source = paste(copy, source, lubridate::year(date))) %>%
-    # mutate(source = case_when(str_detect(source, "Airbus") ~ "Airbus",
-                              # str_detect(source, "DigitalGlobe") ~ "Digital Globe",
-                              # str_detect(source, "ImageSat") ~ "ImageSat")) %>%
     arrange(desc(date)) %>%
     mutate(date = as.character(date, format = "%Y-%m-%d")) %>%
     pmap(list)
 }
 
-prep_map <- function(tile_extent, zoom){
+prep_map <- function(tile_extent){
   long <- mean(c(tile_extent$long1, tile_extent$long2))
   lat <- mean(c(tile_extent$lat1, tile_extent$lat2))
   
   leaflet(options = leafletOptions(minZoom = 3, maxZoom = 18)) %>%
-    setView(lng = long, lat = lat, zoom = zoom) %>%
     addTiles()
-    # addProviderTiles(providers$OpenStreetMap,
-                     # options = providerTileOptions(minZoom = 2, maxZoom = 13),
-                     # group = "base_tiles")
 }
 
 add_tiles <- function(prepped_map, prepped_tiles){
@@ -100,15 +94,21 @@ add_tiles <- function(prepped_map, prepped_tiles){
                          layers = layer$wms)
   })
   
-  leaf %>%
-    addLayersControl(baseGroups = c(map(prepped_tiles, "date")),
-                     overlayGroups = "Expert Pins",
-                     options = layersControlOptions(collapsed = FALSE),
-                     position = "topright")
+  if(str_detect(layer[[1]]$wms, "Myanmar")){
+    leaf %>%
+      addLayersControl(overlayGroups = c(map(prepped_tiles, "date"), "Expert Pins"),
+                       options = layersControlOptions(collapsed = FALSE),
+                       position = "topright")
+  } else {
+    leaf %>%
+      addLayersControl(baseGroups = c(map(prepped_tiles, "date")),
+                       overlayGroups = "Expert Pins",
+                       options = layersControlOptions(collapsed = FALSE),
+                       position = "topright")
+  }
 }
 
 add_buttons <- function(tiled_map, prepped_pins, pins_extent, tiles_df, tile_extent){
-  # sp::bbox(sp::SpatialPoints(tile_extent)
   tile_bbox <- rbind(c(tile_extent$long1, tile_extent$lat1),
                      c(tile_extent$long2, tile_extent$lat2)) %>%
     as.matrix() %>%
@@ -131,11 +131,16 @@ add_buttons <- function(tiled_map, prepped_pins, pins_extent, tiles_df, tile_ext
                   layer.name = "All Site Imagery")
 }
 
-finish_map <- function(leaf, tile_extent){
+finish_map <- function(leaf, tile_extent, prepped_line_bbox){
+  line_bbox <- c(st_point(c(tile_extent$long1, tile_extent$lat1)),
+                 st_point(c(tile_extent$long2, tile_extent$lat2)),
+                 st_point(c(tile_extent$long1, tile_extent$lat2)),
+                 st_point(c(tile_extent$long2, tile_extent$lat1))) %>% 
+    st_convex_hull() %>% 
+    st_cast("LINESTRING")
+  
   leaf %>%
-    # addRectangles(lng1 = tile_extent$long1, lat1 = tile_extent$lat1,
-    #               lng2 = tile_extent$long2, lat2 = tile_extent$lat2,
-    #               fillColor = "transparent") %>%
+    addPolylines(data = line_bbox) %>%
     addMiniMap(zoomLevelOffset = -8,
                width = 175, height = 175,
                aimingRectOptions = list(weight = 5)) %>%
@@ -153,12 +158,12 @@ finish_map <- function(leaf, tile_extent){
             width = 375 * 0.75, height = 82.5 * 0.75, position = "bottomleft")
 }
 
-make_map <- function(shapefile, tiles_df, tile_extent, initial_zoom){
+make_map <- function(shapefile, tiles_df, tile_extent){
   pins <- prep_pins(shapefile)
   pins_extent <- prep_pins_bbox(pins)
   prepped_tiles <- prep_tiles(tiles_df)
-  prep_map(tile_extent = tile_extent, 
-           zoom = initial_zoom) %>%
+
+  prep_map(tile_extent = tile_extent) %>%
     add_tiles(prepped_tiles) %>%
     add_buttons(tiled_map = ., 
                 prepped_pins = pins, 
