@@ -10,7 +10,11 @@ source("not_for_git/url_vars.R")
 
 # helper regex vars =============================================================
 #* junk regex ===================================================================
-junk_regex <- c("[Tt]est", "can i drop this pin\\?", "15SEP16", "test 15SEP16") %>%
+junk_regex <- c("[Tt]est",
+                "test two using Google Chrome and second login",
+                "can i drop this pin\\?", 
+                "15SEP16",
+                "test 15SEP16") %>%
   str_replace_all("^", "\\(\\^") %>%
   str_replace_all("(.)$", "\\1$\\)") %>%
   str_replace_all("\\s", "\\\\b\\\\s\\\\b") %>%
@@ -23,12 +27,16 @@ unicode_regex <- str_c("\u{00B0}", "\u{FFFD}",
 #* "mis-columned" comments ======================================================
 bad_comments <- c("Tunnel entrance with signs of recent activity")
 
+#* wrong site reporters =========================================================
+bad_rptrs <- c("Joseph & Raymond", "Jomond")
+
 # funs ==========================================================================
 prep_pins <- function(shapefile){
   shapefile %>%
     st_read(stringsAsFactors = FALSE) %>%
     `colnames<-`(c("ID", "Date", "ReportedBy", "Source", "Comments", "geometry")) %>%
     filter(!str_detect(str_trim(Comments), junk_regex)) %>%
+    filter(!(ReportedBy %in% bad_rptrs)) %>%
     st_transform(crs = 4326) %>%
     mutate(Date = as.Date(Date)) %>%
     mutate(Comments = str_replace_all(Comments, unicode_regex, "")) %>%
@@ -62,10 +70,14 @@ prep_tiles <- function(tiles_df){
                                                                               "\\1-01-\\2"),
                             TRUE ~ date),
            date = as.Date(date, format = "%m-%d-%Y")) %>%
-    mutate(source = str_extract(wms, attribution_regex)) %>%
-    mutate(source = str_extract(source, "[A-z]+")) %>%
-    mutate(source = ifelse(str_detect(source, "DigitalGlobe"),
-                           "Digital Globe", source)) %>%
+    mutate(source = case_when(str_detect(str_to_lower(wms), "airbus") ~ "Airbus",
+                              str_detect(str_to_lower(wms), "dig[it][ti]alglobe") ~ "Digital Globe",
+                              str_detect(str_to_lower(wms), "imagesat") ~ "ImageSat",
+                              TRUE ~ "wat")) %>%
+    # mutate(source = str_extract(wms, attribution_regex)) %>%
+    # mutate(source = str_extract(source, "[A-z]+")) %>%
+    # mutate(source = ifelse(str_detect(source, "DigitalGlobe"),
+                           # "Digital Globe", source)) %>%
     mutate(source = paste(copy, source, lubridate::year(date))) %>%
     arrange(desc(date)) %>%
     mutate(date = as.character(date, format = "%Y-%m-%d")) %>%
@@ -94,7 +106,7 @@ add_tiles <- function(prepped_map, prepped_tiles){
                          layers = layer$wms)
   })
   
-  if(str_detect(layer[[1]]$wms, "Myanmar")){
+  if(str_detect(layer[[1]]$wms, "Myanmar|Russia_Kaliningrad")){
     leaf %>%
       addLayersControl(overlayGroups = c(map(prepped_tiles, "date"), "Expert Pins"),
                        options = layersControlOptions(collapsed = FALSE),
