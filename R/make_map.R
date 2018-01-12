@@ -72,12 +72,7 @@ prep_tiles <- function(tiles_df){
            date = as.Date(date, format = "%m-%d-%Y")) %>%
     mutate(source = case_when(str_detect(str_to_lower(wms), "airbus") ~ "Airbus",
                               str_detect(str_to_lower(wms), "dig[it][ti]alglobe") ~ "Digital Globe",
-                              str_detect(str_to_lower(wms), "imagesat") ~ "ImageSat",
-                              TRUE ~ "wat")) %>%
-    # mutate(source = str_extract(wms, attribution_regex)) %>%
-    # mutate(source = str_extract(source, "[A-z]+")) %>%
-    # mutate(source = ifelse(str_detect(source, "DigitalGlobe"),
-                           # "Digital Globe", source)) %>%
+                              str_detect(str_to_lower(wms), "imagesat") ~ "ImageSat")) %>%
     mutate(source = paste(copy, source, lubridate::year(date))) %>%
     arrange(desc(date)) %>%
     mutate(date = as.character(date, format = "%Y-%m-%d")) %>%
